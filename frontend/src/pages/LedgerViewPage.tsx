@@ -39,6 +39,7 @@ export default function LedgerViewPage() {
   const [loadingStatement, setLoadingStatement] = useState(false);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState(defaultDateRange);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentForm, setPaymentForm] = useState<PaymentCreate>({
     ledger_id: ledgerId,
@@ -95,7 +96,7 @@ export default function LedgerViewPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [ledgerId, period.fromDate, period.toDate]);
+  }, [ledgerId, period.fromDate, period.toDate, refreshKey]);
 
   const activeCurrencyCode = company?.currency_code || 'INR';
 
@@ -130,7 +131,7 @@ export default function LedgerViewPage() {
         notes: '',
       });
       // Refresh statement
-      setPeriod((c) => ({ ...c }));
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to record payment'));
     } finally {
