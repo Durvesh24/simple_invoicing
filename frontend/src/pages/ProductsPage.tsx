@@ -1,0 +1,294 @@
+import { useEffect, useState } from 'react';
+import api, { getApiErrorMessage } from '../api/client';
+import type { CompanyProfile, Product, ProductCreate } from '../types/api';
+
+function formatCurrency(value: number, currencyCode = 'USD') {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+    }).format(value);
+  } catch {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(value);
+  }
+}
+
+export default function ProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [company, setCompany] = useState<CompanyProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [form, setForm] = useState({
+    sku: '',
+    name: '',
+    description: '',
+    hsn_sac: '',
+    price: '',
+    gst_rate: '0',
+  });
+
+  const activeCurrencyCode = company?.currency_code || 'USD';
+
+  async function loadProducts() {
+    try {
+      setLoading(true);
+      setError('');
+      const [productsRes, companyRes] = await Promise.all([
+        api.get<Product[]>('/products/'),
+        api.get<CompanyProfile>('/company/'),
+      ]);
+      setProducts(productsRes.data);
+      setCompany(companyRes.data);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to load products'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadProducts();
+  }, []);
+
+  function resetForm() {
+    setForm({ sku: '', name: '', description: '', hsn_sac: '', price: '', gst_rate: '0' });
+    setEditingProductId(null);
+  }
+
+  function startEditProduct(product: Product) {
+    setError('');
+    setSuccess('');
+    setEditingProductId(product.id);
+    setForm({
+      sku: product.sku,
+      name: product.name,
+      description: product.description ?? '',
+      hsn_sac: product.hsn_sac ?? '',
+      price: String(product.price),
+      gst_rate: String(product.gst_rate),
+    });
+  }
+
+  async function handleSubmitProduct(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    try {
+      setSubmitting(true);
+      setError('');
+      setSuccess('');
+
+      const payload: ProductCreate = {
+        sku: form.sku.trim(),
+        name: form.name.trim(),
+        description: form.description.trim(),
+        hsn_sac: form.hsn_sac.trim(),
+        price: Number(form.price),
+        gst_rate: Number(form.gst_rate),
+      };
+
+      if (editingProductId) {
+        await api.put<Product>(`/products/${editingProductId}`, payload);
+        setSuccess('Product updated successfully.');
+      } else {
+        await api.post<Product>('/products/', payload);
+        setSuccess('Product created successfully.');
+      }
+
+      resetForm();
+      await loadProducts();
+    } catch (err) {
+      setError(getApiErrorMessage(err, editingProductId ? 'Unable to update product' : 'Unable to create product'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteProduct(productId: number) {
+    const confirmed = window.confirm(`Delete product #${productId}? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingProductId(productId);
+      setError('');
+      setSuccess('');
+
+      await api.delete(`/products/${productId}`);
+      if (editingProductId === productId) {
+        resetForm();
+      }
+
+      setSuccess('Product deleted successfully.');
+      await loadProducts();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to delete product'));
+    } finally {
+      setDeletingProductId(null);
+    }
+  }
+
+  return (
+    <div className="page-grid">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">Products</p>
+          <h1 className="page-title">Catalog intake</h1>
+          <p className="section-copy">Create products, keep pricing current, and review the active SKU list.</p>
+        </div>
+        <div className="status-chip">{products.length} loaded</div>
+      </section>
+
+      {error ? <div className="status-banner status-banner--error">{error}</div> : null}
+      {success ? <div className="status-banner status-banner--success">{success}</div> : null}
+
+      <section className="content-grid">
+        <article className="panel stack">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Create product</p>
+              <h2 className="nav-panel__title">{editingProductId ? `Editing product #${editingProductId}` : 'New SKU'}</h2>
+            </div>
+          </div>
+
+          <form className="stack" onSubmit={handleSubmitProduct}>
+            <div className="field-grid">
+              <div className="field">
+                <label htmlFor="sku">SKU</label>
+                <input
+                  id="sku"
+                  className="input"
+                  value={form.sku}
+                  onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))}
+                  placeholder="RSP-1001"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="price">Price</label>
+                <input
+                  id="price"
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))}
+                  placeholder="99.00"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="hsn-sac">HSN/SAC</label>
+                <input
+                  id="hsn-sac"
+                  className="input"
+                  value={form.hsn_sac}
+                  onChange={(event) => setForm((current) => ({ ...current, hsn_sac: event.target.value }))}
+                  placeholder="8471 or 9983"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="gst-rate">GST %</label>
+                <input
+                  id="gst-rate"
+                  className="input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={form.gst_rate}
+                  onChange={(event) => setForm((current) => ({ ...current, gst_rate: event.target.value }))}
+                  placeholder="18"
+                  required
+                />
+              </div>
+              <div className="field field--full">
+                <label htmlFor="name">Name</label>
+                <input
+                  id="name"
+                  className="input"
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Respawn Controller"
+                  required
+                />
+              </div>
+              <div className="field field--full">
+                <label htmlFor="description">Description</label>
+                <textarea
+                  id="description"
+                  className="textarea"
+                  value={form.description}
+                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="Optional details for operators and quoting."
+                />
+              </div>
+            </div>
+
+            <div className="button-row">
+              {editingProductId ? (
+                <button type="button" className="button button--secondary" onClick={resetForm}>
+                  Cancel edit
+                </button>
+              ) : null}
+              <button className="button button--primary" disabled={submitting}>
+                {submitting ? (editingProductId ? 'Updating product...' : 'Saving product...') : editingProductId ? 'Update product' : 'Create product'}
+              </button>
+            </div>
+          </form>
+        </article>
+
+        <article className="panel stack">
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">Current catalog</p>
+              <h2 className="nav-panel__title">Products list</h2>
+            </div>
+          </div>
+
+          <div className="table-list">
+            {loading ? <div className="empty-state">Loading products...</div> : null}
+            {!loading && products.length === 0 ? <div className="empty-state">No products have been created yet.</div> : null}
+            {!loading
+              ? products.map((product) => (
+                  <div key={product.id} className="table-row">
+                    <div className="table-row__meta">
+                      <strong>{product.name}</strong>
+                      <span className="table-subtext">
+                        {product.sku}
+                        {product.hsn_sac ? ` • HSN/SAC ${product.hsn_sac}` : ''}
+                        {` • GST ${product.gst_rate}%`}
+                        {product.description ? ` • ${product.description}` : ''}
+                      </span>
+                    </div>
+                    <span className="table-row__price">{formatCurrency(product.price, activeCurrencyCode)}</span>
+                    <div className="table-row__actions">
+                      <button type="button" className="button button--ghost" onClick={() => startEditProduct(product)} disabled={submitting}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--danger"
+                        onClick={() => void handleDeleteProduct(product.id)}
+                        disabled={deletingProductId === product.id}
+                      >
+                        {deletingProductId === product.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              : null}
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}

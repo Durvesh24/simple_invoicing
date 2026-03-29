@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: respawn_db
+    environment:
+      POSTGRES_USER: respawn_user
+      POSTGRES_PASSWORD: respawn_password
+      POSTGRES_DB: respawn_invoicing
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U respawn_user -d respawn_invoicing"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI Service (production)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: respawn_backend
+    profiles: ["prod"]
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://respawn_user:respawn_password@db:5432/respawn_invoicing
+    env_file: ./backend/.env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/products"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI Service (development)
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: respawn_backend_dev
+    profiles: ["dev"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql://respawn_user:respawn_password@db:5432/respawn_invoicing
+    env_file: ./backend/.env.development
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+
+  # Frontend React Service (production)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: respawn_frontend
+    profiles: ["prod"]
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Frontend React Service (development)
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: respawn_frontend_dev
+    profiles: ["dev"]
+    depends_on:
+      - backend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+
+volumes:
+  node_modules:
+
+networks:
+  default:
+    name: respawn_network
