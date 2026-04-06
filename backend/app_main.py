@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from src.api.routes import auth, users, products, inventory, invoices, ledgers, company, payments, smtp
+from src.api.routes import auth, users, products, inventory, invoices, ledgers, company, payments, smtp, email as email_routes
 from src.db.base import Base
 from src.db.session import engine
 
@@ -93,6 +93,7 @@ app.include_router(ledgers.router, prefix="/api/ledgers", tags=["ledgers"])
 app.include_router(company.router, prefix="/api/company", tags=["company"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 app.include_router(smtp.router, prefix="/api/smtp-configs", tags=["smtp"])
+app.include_router(email_routes.router, prefix="/api/email", tags=["email"])
 
 @app.get("/api/health")
 def health():
